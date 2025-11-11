@@ -91,6 +91,10 @@ def stream_zst_pgn_to_jsonl(zst_path, output_file, min_elo=2400, max_elo=2800, m
                     if buffer:
                         input_queue.put("".join(buffer))
                         count += 1
+                        # Periodic progress
+                        if count % 100000 == 0 and count > 0:
+                            elapsed = time.time() - start_time
+                            print(f"📦 Processed ~{count} games, decompressed={decompressed_bytes / (1024*1024):.1f} MB, elapsed={elapsed:.1f}s, ~{elapsed/count:.6f}s/game")
                         if max_games and count >= max_games:
                             break
                         buffer = []
@@ -98,11 +102,6 @@ def stream_zst_pgn_to_jsonl(zst_path, output_file, min_elo=2400, max_elo=2800, m
 
                 if in_game:
                     buffer.append(line)
-
-                # Periodic progress
-                if count % 10000 == 0 and count > 0:
-                    elapsed = time.time() - start_time
-                    print(f"📦 Processed ~{count} games, decompressed={decompressed_bytes / (1024*1024):.1f} MB, elapsed={elapsed:.1f}s, ~{elapsed/count:.6f}s/game")
 
             # enqueue last game
             if buffer and (not max_games or count < max_games):
