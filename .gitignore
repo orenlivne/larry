@@ -1,0 +1,13 @@
+maia-chess/
+lichess-bot/
+models/
+data/
+# LarryBot
+maia-chess/
+lichess-bot/
+models/
+data/
+.python-version
+.venv/
+.vscode/
+ 

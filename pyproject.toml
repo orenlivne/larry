@@ -1,0 +1,8 @@
+[project]
+name = "larrybot"
+version = "0.1.0"
+description = "Larry Maia fine-tuning project"
+authors = ["Oren Livne <you@example.com>"]
+dependencies = [
+    "ipython>=9.6.0",
+]
