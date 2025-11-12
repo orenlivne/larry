@@ -1,119 +1,89 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")" && pwd)"
-DATA="$ROOT/data"
-SCRIPTS="$ROOT/scripts"
-MAIA_DIR="$DATA/maia-2200"
-MAIA_2200_URL="https://github.com/CallOn84/LeelaNets/raw/refs/heads/main/Nets/Maia%202200/maia-2200.pb.gz"
-PYPROJECT="$ROOT/pyproject_maia_dummy.toml"
+# ===============================
+# LarryBot Full Setup Script
+# ===============================
 
-mkdir -p "$DATA" "$SCRIPTS" "$DATA/lichess_raw"
-
-echo "=== 1) Create & activate virtual environment ==="
-if [ ! -d "$ROOT/.venv" ]; then
-  python3 -m venv "$ROOT/.venv"
-fi
-source "$ROOT/.venv/bin/activate"
-
-echo "=== 2) Install dependencies ==="
-pip install --upgrade pip
-pip install tensorflow==2.15.0 pandas numpy python-chess tqdm requests zstandard scikit-learn matplotlib seaborn
-
-echo "=== 3) Link dummy pyproject.toml into maia-chess ==="
-if [ -d "$ROOT/maia-chess" ]; then
-  ln -sf "$PYPROJECT" "$ROOT/maia-chess/pyproject.toml"
-else
-  echo "⚠️  Warning: maia-chess directory not found. Skipping link."
-fi
-
-echo "=== 4) Download & filter Lichess games (Jan 2025 only, Elo 2400–2800) ==="
-YEAR="${YEAR:-2025}"
-MONTH="01"
-LICHESS_DIR="$DATA/lichess_raw"
-LICHESS_ZST="$LICHESS_DIR/lichess_db_standard_rated_${YEAR}-${MONTH}.pgn.zst"
-LICHESS_PGN="$DATA/lichess_${YEAR}.pgn"
-LICHESS_JSONL="$DATA/lichess_${YEAR}.jsonl"
-LICHESS_URL="https://database.lichess.org/standard/lichess_db_standard_rated_${YEAR}-${MONTH}.pgn.zst"
-
-mkdir -p "$LICHESS_DIR"
-
-# 1️⃣ Skip if final JSONL exists and non-empty
-if [ -s "$LICHESS_JSONL" ]; then
-  echo "✅ Found existing $LICHESS_JSONL — skipping download/filter."
-else
-  # 2️⃣ Download or resume .zst
-  if [ -f "$LICHESS_ZST" ]; then
-    echo "🔁 Resuming partial download for $LICHESS_ZST ..."
-    curl -C - -L -o "$LICHESS_ZST" "$LICHESS_URL" || echo "⚠️ Warning: download interrupted, continuing with partial file."
-  else
-    echo "⬇️   Downloading $LICHESS_URL ..."
-    curl -C - -L -o "$LICHESS_ZST" "$LICHESS_URL" || { echo "❌ Failed to download"; exit 1; }
-  fi
-
-  # 3️⃣ Sanity check
-  if [ ! -s "$LICHESS_ZST" ]; then
-    echo "❌ $LICHESS_ZST is empty or missing after download."
-    exit 1
-  fi
-
-  # 4️⃣ Filter Elo 2400–2800 directly from .zst (limit to 200k output games)
-  echo "📦 Filtering Elo 2400–2800 (max 200k games)..."
-  uv run python "$SCRIPTS/download_lichess_games.py" \
-    --zst "$LICHESS_ZST" \
-    --min-elo 2400 \
-    --max-elo 2800 \
-    --max-games 200000 \
-    --out "$LICHESS_JSONL"
-
-  # 5️⃣ Verify output
-  if [ ! -s "$LICHESS_JSONL" ]; then
-    echo "❌ Filtering failed: $LICHESS_JSONL is empty."
-    exit 1
-  else
-    echo "✅ Filtered dataset ready: $LICHESS_JSONL"
-  fi
-fi
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DATA_DIR="$ROOT_DIR/data"
+SCRIPTS="$ROOT_DIR/scripts"
+MAIA_DIR="$DATA_DIR/maia-2200"
+LICHESS_JSONL="$DATA_DIR/lichess_2025.jsonl"
+TRAIN_JSONL="$DATA_DIR/train.jsonl"
+VAL_JSONL="$DATA_DIR/val.jsonl"
+SAVE_DIR="$DATA_DIR/larrybot"
 
 echo "=== 5) Convert PGN → JSONL dataset (legacy, skip if JSONL exists) ==="
-if [ -s "$LICHESS_JSONL" ]; then
+if [ -f "$LICHESS_JSONL" ]; then
   echo "✅ Found $LICHESS_JSONL — skipping conversion."
 else
-  uv run python "$SCRIPTS/pgn_to_training.py" \
-    --pgn "$LICHESS_PGN" \
-    --out "$LICHESS_JSONL"
+  echo "⚙️ Converting lichess PGN to JSONL..."
+  uv run python "$SCRIPTS/download_lichess_games.py" \
+    --zst "$DATA_DIR/lichess_raw/lichess_db_standard_rated_2025-01.pgn.zst" \
+    --out "$LICHESS_JSONL" \
+    --min-elo 2400 \
+    --max-elo 2800 \
+    --max-games 200000
 fi
 
 echo "=== 6) Obtain base Maia model (optional) ==="
-if [ -d "$MAIA_DIR" ] && [ -f "$MAIA_DIR/maia-2200.pb" ]; then
+if [ -d "$MAIA_DIR" ]; then
   echo "✅ Found existing $MAIA_DIR — skipping download."
 else
-  echo "⬇️  Downloading Maia-2200 .pb.gz..."
+  echo "⚙️ Downloading Maia 2200 base model..."
   mkdir -p "$MAIA_DIR"
-  curl -L -o "$MAIA_DIR/maia-2200.pb.gz" "$MAIA_2200_URL"
-  gunzip -f "$MAIA_DIR/maia-2200.pb.gz"
-  echo "✅ Decompressed to $MAIA_DIR/maia-2200.pb"
+  curl -L -o "$MAIA_DIR/maia-2200.h5" https://storage.googleapis.com/maia-models/maia-2200.h5
 fi
 
-echo "=== 7) Train base model (if no H5 checkpoint yet) ==="
-if [ ! -f "$MAIA_DIR/maia-2200.h5" ]; then
-  echo "⚙️  Training base Maia-style model from lichess_dataset.jsonl..."
+echo "=== 6.5) Split dataset into train/val sets ==="
+if [ -f "$TRAIN_JSONL" ] && [ -f "$VAL_JSONL" ]; then
+  echo "✅ Found $TRAIN_JSONL and $VAL_JSONL — skipping split."
+else
+  echo "⚙️ Splitting $LICHESS_JSONL into train/val..."
+  uv run python "$SCRIPTS/split_dataset.py" \
+    --input "$LICHESS_JSONL" \
+    --train-out "$TRAIN_JSONL" \
+    --val-out "$VAL_JSONL" \
+    --val-fraction 0.1
+fi
+
+echo "=== 7) Train base model on Lichess ==="
+if [ ! -d "$MAIA_DIR/maia-2200.h5/saved_model" ]; then
+  echo "⚙️ Training base Maia-style model from Lichess..."
   uv run python "$SCRIPTS/train_base_fallback.py" \
-    --data "$LICHESS_JSONL" \
-    --out "$MAIA_DIR/maia-2200.h5"
+    --data "$TRAIN_JSONL" \
+    --out "$MAIA_DIR/maia-2200.h5" \
+    --epochs 3 \
+    --batch-size 256 \
+    --lr 1e-3
 else
   echo "✅ Found existing $MAIA_DIR/maia-2200.h5 — skipping base training."
 fi
 
-echo "=== 8) Fine-tune Maia → LarryBot ==="
-uv run python "$SCRIPTS/train_larry.py" \
-  --train-data "$DATA/larry_dataset.jsonl" \
-  --val-data "$LICHESS_JSONL" \
-  --init-from "$MAIA_DIR/maia-2200.h5" \
-  --save-dir "$DATA/larrybot" \
-  --epochs 5 \
-  --batch-size 64 \
-  --lr 1e-4 \
-  --use-gpu
+echo "=== 7.5) Convert Larry PGN → JSONL ==="
+LARRY_JSONL="$DATA_DIR/larry_games.jsonl"
+if [ -f "$LARRY_JSONL" ]; then
+  echo "✅ Found $LARRY_JSONL — skipping conversion."
+else
+  echo "⚙️ Converting Larry PGN → JSONL..."
+  uv run python "$SCRIPTS/pgn_to_jsonl.py" \
+    --pgn "$DATA_DIR/larry_games.pgn" \
+    --out "$LARRY_JSONL"
+fi
 
-echo "✅ All steps complete. LarryBot is ready!"
+echo "=== 8) Fine-tune on Larry's games ==="
+if [ -d "$SAVE_DIR/larrybot" ]; then
+  echo "✅ Found existing $SAVE_DIR/larrybot — skipping fine-tuning."
+else
+  echo "⚙️ Fine-tuning Maia → LarryBot ..."
+  uv run python "$SCRIPTS/train_base_fallback.py" \
+    --data "$DATA_DIR/larry_games.jsonl" \
+    --out "$SAVE_DIR/larrybot" \
+    --init-from "$MAIA_DIR/maia-2200.h5" \
+    --epochs 1 \
+    --batch-size 128 \
+    --lr 1e-5
+fi
+
+echo "✅ LarryBot setup completed successfully!"

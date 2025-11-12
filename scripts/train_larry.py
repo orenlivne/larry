@@ -16,10 +16,17 @@ def train_model(train_data, val_data, init_from, save_dir, epochs=3, batch_size=
     X = np.zeros((len(data), 8, 8, 12), dtype=np.float32)
     y = np.zeros((len(data), 1), dtype=np.float32)
 
+    # ✅ Flatten input tensors if they are 4D (e.g., 8x8x12 board planes)
+    if len(X.shape) == 4:
+        print(f"🧩 Flattening input tensors from shape {X.shape} to {(X.shape[0], np.prod(X.shape[1:]))}")
+        # Flatten in row-major (C) order — preserves piece-plane and square order
+        X = X.reshape((X.shape[0], -1))
+
     print(f"🧠 Fine-tuning Maia on {len(X)} samples for {epochs} epochs...")
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
                   loss="sparse_categorical_crossentropy",
                   metrics=["accuracy"])
+
     model.fit(X, y, epochs=epochs, batch_size=batch_size)
 
     out_dir = os.path.join(save_dir, "larry_model")

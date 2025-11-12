@@ -4,5 +4,8 @@ version = "0.1.0"
 description = "Larry Maia fine-tuning project"
 authors = ["Oren Livne <you@example.com>"]
 dependencies = [
+    "berserk>=0.14.0",
     "ipython>=9.6.0",
+    "python-chess>=1.999",
+    "tensorflow>=2.20.0",
 ]
