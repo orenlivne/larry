@@ -32,14 +32,15 @@ YEAR="${YEAR:-2025}"
 MONTH="01"
 LICHESS_DIR="$DATA/lichess_raw"
 LICHESS_ZST="$LICHESS_DIR/lichess_db_standard_rated_${YEAR}-${MONTH}.pgn.zst"
-LICHESS_JSON="$DATA/lichess_${YEAR}.jsonl"
+LICHESS_PGN="$DATA/lichess_${YEAR}.pgn"
+LICHESS_JSONL="$DATA/lichess_${YEAR}.jsonl"
 LICHESS_URL="https://database.lichess.org/standard/lichess_db_standard_rated_${YEAR}-${MONTH}.pgn.zst"
 
 mkdir -p "$LICHESS_DIR"
 
-# 1️⃣ Skip if final JSONL exists
-if [ -s "$LICHESS_JSON" ]; then
-  echo "✅ Found existing $LICHESS_JSON — skipping download/filter."
+# 1️⃣ Skip if final JSONL exists and non-empty
+if [ -s "$LICHESS_JSONL" ]; then
+  echo "✅ Found existing $LICHESS_JSONL — skipping download/filter."
 else
   # 2️⃣ Download or resume .zst
   if [ -f "$LICHESS_ZST" ]; then
@@ -56,26 +57,32 @@ else
     exit 1
   fi
 
-  # 4️⃣ Stream & filter Elo 2400–2800 directly to JSONL
-  echo "📦 Filtering Elo 2400–2800..."
+  # 4️⃣ Filter Elo 2400–2800 directly from .zst (limit to 200k output games)
+  echo "📦 Filtering Elo 2400–2800 (max 200k games)..."
   uv run python "$SCRIPTS/download_lichess_games.py" \
     --zst "$LICHESS_ZST" \
-    --out "$LICHESS_JSON" \
     --min-elo 2400 \
-    --max-elo 2800
+    --max-elo 2800 \
+    --max-games 200000 \
+    --out "$LICHESS_JSONL"
 
   # 5️⃣ Verify output
-  if [ ! -s "$LICHESS_JSON" ]; then
-    echo "❌ Filtering failed: $LICHESS_JSON is empty."
+  if [ ! -s "$LICHESS_JSONL" ]; then
+    echo "❌ Filtering failed: $LICHESS_JSONL is empty."
     exit 1
   else
-    echo "✅ Filtered dataset ready: $LICHESS_JSON"
+    echo "✅ Filtered dataset ready: $LICHESS_JSONL"
   fi
 fi
 
-echo "=== 5) Convert PGN → JSONL dataset (optional if already have JSONL) ==="
-# Already done in step 4; keep for backward compatibility
-# uv run python "$SCRIPTS/pgn_to_training.py" --pgn "$LICHESS_PGN" --out "$DATA/lichess_dataset.jsonl"
+echo "=== 5) Convert PGN → JSONL dataset (legacy, skip if JSONL exists) ==="
+if [ -s "$LICHESS_JSONL" ]; then
+  echo "✅ Found $LICHESS_JSONL — skipping conversion."
+else
+  uv run python "$SCRIPTS/pgn_to_training.py" \
+    --pgn "$LICHESS_PGN" \
+    --out "$LICHESS_JSONL"
+fi
 
 echo "=== 6) Obtain base Maia model (optional) ==="
 if [ -d "$MAIA_DIR" ] && [ -f "$MAIA_DIR/maia-2200.pb" ]; then
@@ -90,9 +97,9 @@ fi
 
 echo "=== 7) Train base model (if no H5 checkpoint yet) ==="
 if [ ! -f "$MAIA_DIR/maia-2200.h5" ]; then
-  echo "⚙️  Training base Maia-style model from lichess JSONL dataset..."
+  echo "⚙️  Training base Maia-style model from lichess_dataset.jsonl..."
   uv run python "$SCRIPTS/train_base_fallback.py" \
-    --data "$LICHESS_JSON" \
+    --data "$LICHESS_JSONL" \
     --out "$MAIA_DIR/maia-2200.h5"
 else
   echo "✅ Found existing $MAIA_DIR/maia-2200.h5 — skipping base training."
@@ -101,7 +108,7 @@ fi
 echo "=== 8) Fine-tune Maia → LarryBot ==="
 uv run python "$SCRIPTS/train_larry.py" \
   --train-data "$DATA/larry_dataset.jsonl" \
-  --val-data "$LICHESS_JSON" \
+  --val-data "$LICHESS_JSONL" \
   --init-from "$MAIA_DIR/maia-2200.h5" \
   --save-dir "$DATA/larrybot" \
   --epochs 5 \

@@ -51,7 +51,7 @@ def main():
     model = tf.keras.Sequential([
         tf.keras.layers.Input(shape=(120,)),
         tf.keras.layers.Embedding(vocab_size, 128),
-        tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(256, return_sequences=True)),d
+        tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(256, return_sequences=True)),
         tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(vocab_size, activation="softmax"))
     ])
     model.compile(optimizer=tf.keras.optimizers.Adam(args.lr), loss="sparse_categorical_crossentropy")
