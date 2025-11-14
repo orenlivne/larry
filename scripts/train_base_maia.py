@@ -89,6 +89,13 @@ if __name__ == "__main__":
     y = encode_labels(y_raw, move_map)
     print(f"📦 Dataset: X={X.shape}, y={y.shape}, moves={len(move_map)}")
 
+    # Save move map for later inference / tests
+    import os
+    os.makedirs("./data", exist_ok=True)
+    with open("./data/move_map.json", "w") as f:
+        json.dump(move_map, f)
+    print(f"✅ Saved move map to ./data/move_map.json")
+
     model = build_model(X.shape[1:], len(move_map), args.lr)
     model.summary()
 

@@ -7,44 +7,54 @@ import numpy as np
 import tensorflow as tf
 import chess
 import chess.engine
-import berserk
 
 ############################################################
-# FEN → planes (same as training)
+# FEN → planes (must match training: 8x8x18)
 ############################################################
+import chess
+import numpy as np
 
 def fen_to_planes(fen):
+    """
+    Converts FEN to 18-plane tensor:
+      - 12 planes: piece type (P,N,B,R,Q,K x white/black)
+      - 1 plane: side to move
+      - 4 planes: castling rights (KQkq)
+      - 1 plane: move count / dummy
+    """
     board = chess.Board(fen)
-    planes = []
+    planes = np.zeros((8,8,18), dtype=np.float32)
 
-    piece_map = board.piece_map()
     piece_planes = {
-        'P': 0, 'N': 1, 'B': 2, 'R': 3, 'Q': 4, 'K': 5,
-        'p': 6, 'n': 7, 'b': 8, 'r': 9, 'q': 10, 'k': 11
+        'P':0,'N':1,'B':2,'R':3,'Q':4,'K':5,
+        'p':6,'n':7,'b':8,'r':9,'q':10,'k':11
     }
 
-    # 12 planes: piece type planes
-    arr = np.zeros((8, 8, 12), dtype=np.float32)
-    for sq, piece in piece_map.items():
+    for sq, piece in board.piece_map().items():
         row = 7 - (sq // 8)
         col = sq % 8
-        arr[row, col, piece_planes[piece.symbol()]] = 1
-    planes.append(arr)
+        planes[row, col, piece_planes[piece.symbol()]] = 1
 
     # 13th plane: side to move
-    stm = np.full((8, 8, 1), 1.0 if board.turn == chess.WHITE else 0.0)
-    planes.append(stm)
+    planes[:,:,12] = 1.0 if board.turn == chess.WHITE else 0.0
 
-    return np.concatenate(planes, axis=-1)  # shape (8,8,13)
+    # 14-17: castling rights
+    planes[:,:,13] = 1.0 if board.has_kingside_castling_rights(chess.WHITE) else 0.0
+    planes[:,:,14] = 1.0 if board.has_queenside_castling_rights(chess.WHITE) else 0.0
+    planes[:,:,15] = 1.0 if board.has_kingside_castling_rights(chess.BLACK) else 0.0
+    planes[:,:,16] = 1.0 if board.has_queenside_castling_rights(chess.BLACK) else 0.0
 
+    # 18th plane: dummy / optional (fill with zeros)
+    planes[:,:,17] = 0.0
+
+    return planes
 
 ############################################################
-# Predict move (SAN → index → pick best legal → return Move)
+# Predict move
 ############################################################
-
 def predict_maia_move(model, board, inv_map):
-    X = np.expand_dims(fen_to_planes(board.fen()), 0)  # (1,8,8,planes)
-    preds = model.predict(X, verbose=0)[0]             # (num_moves,)
+    X = np.expand_dims(fen_to_planes(board.fen()), axis=0)  # shape (1,8,8,18)
+    preds = model.predict(X, verbose=0)[0]                   # (num_moves,)
 
     legal_moves = list(board.legal_moves)
     best = None
@@ -52,7 +62,6 @@ def predict_maia_move(model, board, inv_map):
 
     for mv in legal_moves:
         san = board.san(mv)
-        # find SAN → index
         for idx, san_move in inv_map.items():
             if san_move == san:
                 if preds[idx] > best_score:
@@ -61,7 +70,6 @@ def predict_maia_move(model, board, inv_map):
                 break
 
     return best
-
 
 ############################################################
 # Load move map

@@ -3,6 +3,8 @@ import chess
 import chess.engine
 import numpy as np
 import pytest
+import tensorflow as tf
+
 
 from run_larrybot import (
     predict_maia_move,

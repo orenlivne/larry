@@ -8,7 +8,6 @@ lichess-bot/
 models/
 data/
 .python-version
+**/__pycache__
 .venv/
 .vscode/
- **/__pycache__/
- 
