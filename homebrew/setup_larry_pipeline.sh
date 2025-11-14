@@ -74,7 +74,7 @@ if [ "$INSTALLED_TF" = "$REQUIRED_TF" ]; then
 else
   "$PYTHON" -m pip install --upgrade --force-reinstall \
     "tensorflow-macos==$REQUIRED_TF" "tensorflow-metal==1.1.0" \
-    numpy<2 pandas python-chess tqdm requests zstandard scikit-learn matplotlib seaborn
+    numpy<2 pandas python-chess tqdm requests zstandard scikit-learn matplotlib seaborn pytest
 fi
 
 # -----------------------------
@@ -186,7 +186,7 @@ else
   mkdir -p "$SAVE_DIR"
   "$PYTHON" "$SCRIPTS/train_base_fallback.py" \
     --data "$LARRY_TRAIN_JSONL" --move-map "$MOVE_MAP" --init-from "$BASE_H5" \
-    --out "$SAVE_DIR" --epochs 3 --batch-size 128 --lr 1e-5
+    --out "$SAVE_DIR" --epochs 1 --batch-size 128 --lr 1e-5
   if [ -d "$LARRY_SAVED_MODEL_DIR" ]; then
     "$PYTHON" - <<PY
 import tensorflow as tf
