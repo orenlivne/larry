@@ -5,7 +5,7 @@ echo "==== 0) Larry-Maia Setup Starting ===="
 VENV_DIR="./.venv"
 
 # -------------------- Parameters --------------------
-DOWNSAMPLE_COUNT=5000   # Number of Lichess moves to use in training
+DOWNSAMPLE_COUNT=2500000   # Number of Lichess moves to use in training
 
 # -------------------- Environment --------------------
 if [ ! -d "$VENV_DIR" ]; then
@@ -61,7 +61,7 @@ else
     python "$PWD/scripts/train_base_maia.py" \
       --data "$DOWNSAMPLED" \
       --out_model "$BASE_MODEL" \
-      --epochs 1 \
+      --epochs 10 \
       --batch_size 256 \
       --lr 1e-3
 fi
@@ -86,7 +86,7 @@ if [ -f "$LARRY_JSONL" ]; then
           --base_model "$BASE_MODEL" \
           --larry_jsonl "$LARRY_JSONL" \
           --out_model "$FINE_TUNE_MODEL" \
-          --epochs 1 \
+          --epochs 2 \
           --batch_size 128 \
           --lr 5e-4 \
           --freeze_conv
