@@ -2,7 +2,7 @@
 import argparse, json, numpy as np, tensorflow as tf
 from tensorflow.keras.layers import Input, Conv2D, Add, ReLU, Flatten, Dense, Dropout
 from tensorflow.keras.models import Model
-from tensorflow.keras.callbacks import ModelCheckpoint
+from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 from tqdm import tqdm
 import os
 
@@ -18,6 +18,7 @@ def parse_args():
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--max_samples", type=int, default=None)
     p.add_argument("--val_split", type=float, default=0.05)
+    p.add_argument("--patience", type=int, default=3, help="Early stopping patience")
     return p.parse_args()
 
 # -----------------------------
@@ -159,13 +160,24 @@ if __name__ == "__main__":
     )
 
     # -----------------------------
+    # Early stopping
+    # -----------------------------
+    early_stop_cb = EarlyStopping(
+        monitor="val_accuracy",
+        patience=args.patience,
+        mode="max",
+        verbose=1,
+        restore_best_weights=True
+    )
+
+    # -----------------------------
     # Train
     # -----------------------------
     model.fit(
         train_ds,
         validation_data=val_ds,
         epochs=args.epochs,
-        callbacks=[checkpoint_cb]
+        callbacks=[checkpoint_cb, early_stop_cb]
     )
 
     # Save final model anyway
