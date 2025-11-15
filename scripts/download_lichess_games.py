@@ -1,82 +1,159 @@
 #!/usr/bin/env python3
-import requests, io, zstandard as zstd
-import chess.pgn, json, argparse, multiprocessing as mp
-from pathlib import Path
+import zstandard as zstd
+import chess.pgn
+import chess
+import json
+import io
+import argparse
+import multiprocessing as mp
+import requests
+import time
+from collections import deque
 
-def process_game(pgn_text):
-    """Parse a single game, return JSON dict with moves (as UCI)."""
-    game = chess.pgn.read_game(io.StringIO(pgn_text))
-    if not game:
+def parse_game(pgn_text):
+    """Parse PGN and return JSON dict with moves as list of SAN strings."""
+    try:
+        game = chess.pgn.read_game(io.StringIO(pgn_text))
+        if game is None:
+            return None
+        white_elo = int(game.headers.get("WhiteElo", 0))
+        black_elo = int(game.headers.get("BlackElo", 0))
+
+        board = game.board()
+        moves = []
+        for move in game.mainline_moves():
+            try:
+                moves.append(board.san(move))
+                board.push(move)
+            except Exception:
+                continue
+        if not moves:
+            return None
+
+        return {"WhiteElo": white_elo, "BlackElo": black_elo, "moves": moves}
+    except Exception:
         return None
-    moves = [move.uci() for move in game.mainline_moves()]
-    if not moves:
-        return None
-    return {"moves": moves}
 
-def worker(input_queue, tmp_file):
-    """Worker: get PGN text from queue, write JSON lines."""
-    with open(tmp_file, "w", encoding="utf-8") as f:
-        while True:
-            pgn = input_queue.get()
-            if pgn is None:
-                break
-            game_json = process_game(pgn)
-            if game_json:
-                f.write(json.dumps(game_json) + "\n")
+def worker(input_queue, output_queue, min_elo, max_elo):
+    """Worker process to parse PGN text into JSON."""
+    while True:
+        pgn_text = input_queue.get()
+        if pgn_text is None:
+            break
+        game_data = parse_game(pgn_text)
+        if not game_data:
+            continue
+        if min(game_data["WhiteElo"], game_data["BlackElo"]) < min_elo:
+            continue
+        if max(game_data["WhiteElo"], game_data["BlackElo"]) > max_elo:
+            continue
+        output_queue.put({"moves": game_data["moves"]})
 
-def stream_zst(url, out_path, max_games=200_000, num_workers=mp.cpu_count()):
-    """Download, decompress, parse PGN in parallel, stop at max_games."""
-    tmp_dir = Path(out_path).parent / "tmp_workers"
-    tmp_dir.mkdir(exist_ok=True)
+def stream_url_to_jsonl(url, out_path, min_elo, max_elo, max_games, num_workers=8):
     input_queue = mp.Queue(maxsize=5000)
+    output_queue = mp.Queue()
+    counter = mp.Value("i", 0)
+
     workers = []
-
-    for i in range(num_workers):
-        tmp_file = tmp_dir / f"worker_{i}.jsonl"
-        p = mp.Process(target=worker, args=(input_queue, tmp_file))
+    for _ in range(num_workers):
+        p = mp.Process(target=worker, args=(input_queue, output_queue, min_elo, max_elo))
         p.start()
-        workers.append((p, tmp_file))
+        workers.append(p)
 
-    games_count = 0
-    resp = requests.get(url, stream=True)
-    dctx = zstd.ZstdDecompressor()
-    reader = io.TextIOWrapper(dctx.stream_reader(resp.raw), encoding="utf-8", errors="ignore")
+    start_time = time.time()
+    last_time = start_time
+    last_count = 0
+    recent_rates = deque(maxlen=5)
 
-    buffer = ""
-    for line in reader:
-        if line.startswith("[Event "):
-            if buffer:
-                input_queue.put(buffer)
-                games_count += 1
-                if games_count >= max_games:
-                    break
-                buffer = ""
-        buffer += line
-    if buffer and games_count < max_games:
-        input_queue.put(buffer)
-        games_count += 1
+    def print_status():
+        nonlocal last_time, last_count
+        now = time.time()
+        elapsed = now - start_time
+        count = counter.value
+        rate = (count - last_count) / (now - last_time + 1e-9)
+        recent_rates.append(rate)
+        avg_rate = sum(recent_rates) / len(recent_rates)
+        eta_min = (max_games - count) / avg_rate / 60 if avg_rate > 0 else 0
+        print(f"📦 {count:,} games processed ({avg_rate:.1f}/s, ETA {eta_min:.1f} min)", flush=True)
+        last_time, last_count = now, count
 
-    # Stop workers
-    for _ in workers:
-        input_queue.put(None)
-    for p, _ in workers:
-        p.join()
+    with open(out_path, "w", encoding="utf-8") as f:
+        with requests.get(url, stream=True) as r:
+            r.raise_for_status()
+            dctx = zstd.ZstdDecompressor()
+            with dctx.stream_reader(r.raw) as reader:
+                buffer = io.TextIOWrapper(reader, encoding="utf-8", errors="ignore")
+                pgn_text = ""
+                for line in buffer:
+                    if line.startswith("[Event "):
+                        if pgn_text.strip():
+                            input_queue.put(pgn_text)
+                            pgn_text = ""
+                    pgn_text += line
 
-    # Merge per-worker files
-    with open(out_path, "w", encoding="utf-8") as f_out:
-        for _, tmp_file in workers:
-            with open(tmp_file, "r", encoding="utf-8") as f_in:
-                for line in f_in:
-                    f_out.write(line)
-            tmp_file.unlink()
-    tmp_dir.rmdir()
-    print(f"✅ Done! {games_count} games written to {out_path}")
+                    # Drain output queue
+                    while not output_queue.empty():
+                        game_data = output_queue.get()
+                        board = chess.Board()
+                        for mv in game_data["moves"]:
+                            rec = {"board": board.fen(), "move": mv}
+                            f.write(json.dumps(rec) + "\n")
+                            board.push_san(mv)
+                        # Increment game counter
+                        with counter.get_lock():
+                            counter.value += 1
+                            if counter.value % 100 == 0:
+                                print_status()
+                            if counter.value >= max_games:
+                                for _ in workers:
+                                    input_queue.put(None)
+                                # Drain remaining output
+                                while not output_queue.empty():
+                                    game_data = output_queue.get()
+                                    board = chess.Board()
+                                    for mv in game_data["moves"]:
+                                        rec = {"board": board.fen(), "move": mv}
+                                        f.write(json.dumps(rec) + "\n")
+                                        board.push_san(mv)
+                                print_status()
+                                for w in workers:
+                                    w.join(timeout=5)
+                                return
+
+        # Last game
+        if pgn_text.strip():
+            input_queue.put(pgn_text)
+        for _ in workers:
+            input_queue.put(None)
+        while not output_queue.empty():
+            game_data = output_queue.get()
+            board = chess.Board()
+            for mv in game_data["moves"]:
+                rec = {"board": board.fen(), "move": mv}
+                f.write(json.dumps(rec) + "\n")
+                board.push_san(mv)
+        print_status()
+        for w in workers:
+            w.join(timeout=5)
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--url", required=True, help="Lichess PGN zst file URL")
+    parser.add_argument("--out", required=True, help="Output JSONL file path")
+    parser.add_argument("--min-elo", type=int, default=2400)
+    parser.add_argument("--max-elo", type=int, default=2800)
+    parser.add_argument("--max-games", type=int, default=10000)
+    parser.add_argument("--workers", type=int, default=8)
+    args = parser.parse_args()
+
+    stream_url_to_jsonl(
+        url=args.url,
+        out_path=args.out,
+        min_elo=args.min_elo,
+        max_elo=args.max_elo,
+        max_games=args.max_games,
+        num_workers=args.workers,
+    )
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--url", required=True)
-    parser.add_argument("--out", required=True)
-    parser.add_argument("--max-games", type=int, default=200_000)
-    parser.add_argument("--workers", type=int, default=mp.cpu_count())
-    args = parser.parse_args()
-    stream_zst(args.url, args.out, max_games=args.max_games, num_workers=args.workers)
+    main()

@@ -10,7 +10,7 @@ from run_larrybot import (
     predict_maia_move,
 )
 
-MODEL_PATH = "./models/maia_larry_finetuned.keras"
+MODEL_PATH = "./models/active/maia_larry_finetuned.keras"
 MOVE_MAP_PATH = "./data/move_map.json"
 STOCKFISH = "/opt/homebrew/bin/stockfish"   # brew install stockfish
 

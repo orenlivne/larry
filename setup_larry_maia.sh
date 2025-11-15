@@ -5,7 +5,30 @@ echo "==== 0) Larry-Maia Setup Starting ===="
 VENV_DIR="./.venv"
 
 # -------------------- Parameters --------------------
-DOWNSAMPLE_COUNT=2500000   # Number of Lichess moves to use in training
+MIN_ELO=2400
+MAX_ELO=2800
+MAX_GAMES=10000         # limit downloaded Lichess games
+DOWNSAMPLE_COUNT=2500000
+LARRY_PGN_DEFAULT="./data/larry_games.pgn"
+
+# Allow overriding via command line:
+#   ./setup.sh --larry-pgn myfile.pgn --min-elo 2200 …
+while [[ $# -gt 0 ]]; do
+  key="$1"
+  case $key in
+      --min-elo) MIN_ELO="$2"; shift; shift ;;
+      --max-elo) MAX_ELO="$2"; shift; shift ;;
+      --max-games) MAX_GAMES="$2"; shift; shift ;;
+      --larry-pgn) LARRY_PGN_DEFAULT="$2"; shift; shift ;;
+      *) echo "Unknown option: $1"; exit 1 ;;
+  esac
+done
+
+echo "📌 Using parameters:"
+echo "    MIN_ELO=$MIN_ELO"
+echo "    MAX_ELO=$MAX_ELO"
+echo "    MAX_GAMES=$MAX_GAMES"
+echo "    LARRY_PGN=$LARRY_PGN_DEFAULT"
 
 # -------------------- Environment --------------------
 if [ ! -d "$VENV_DIR" ]; then
@@ -33,6 +56,22 @@ DATA_DIR="./data"
 SAMPLED="$DATA_DIR/lichess_train_sampled.jsonl"
 DOWNSAMPLED="$DATA_DIR/lichess_train_sampled_${DOWNSAMPLE_COUNT}.jsonl"
 
+mkdir -p "$DATA_DIR"
+
+# -------------------- 1) Download Lichess (filtered, JSONL) --------------------
+if [ ! -f "$SAMPLED" ]; then
+  echo "⚡ Downloading + filtering Lichess games → $SAMPLED"
+  uv run python scripts/download_lichess_games.py \
+    --url "https://database.lichess.org/standard/lichess_db_standard_rated_2025-01.pgn.zst" \
+    --out "$SAMPLED" \
+    --min-elo "$MIN_ELO" \
+    --max-elo "$MAX_ELO" \
+    --max-games "$MAX_GAMES"
+else
+  echo "✅ JSONL already exists: $SAMPLED"
+fi
+
+# -------------------- 2) Downsample to desired size --------------------
 if [ ! -f "$DOWNSAMPLED" ]; then
   echo "⚡ Downsampling $SAMPLED → $DOWNSAMPLED ($DOWNSAMPLE_COUNT)"
   python - <<END
@@ -44,7 +83,7 @@ with open("$SAMPLED") as f_in, open("$DOWNSAMPLED", "w") as f_out:
         f_out.write(line)
 END
 else
-  echo "✅ Downsampled dataset already exists: $DOWNSAMPLED"
+  echo "✅ Downsampled dataset exists: $DOWNSAMPLED"
 fi
 
 # -------------------- Models --------------------
@@ -53,12 +92,12 @@ BASE_MODEL="./models/maia_larry_base.keras"
 FINE_TUNE_MODEL="./models/maia_larry_finetuned.keras"
 MOVE_MAP_JSON="$DATA_DIR/move_map.json"
 
-# -------------------- Base Training --------------------
+# -------------------- 3) Train Base Model --------------------
 if [ -f "$BASE_MODEL" ]; then
-    echo "✅ Base model already exists: $BASE_MODEL, skipping training"
+    echo "✅ Base model already exists: $BASE_MODEL"
 else
-    echo "==== 2) Training Maia-Larry base model ===="
-    python "$PWD/scripts/train_base_maia.py" \
+    echo "==== 3) Training Maia-Larry base model ===="
+    python scripts/train_base_maia.py \
       --data "$DOWNSAMPLED" \
       --out_model "$BASE_MODEL" \
       --epochs 10 \
@@ -66,23 +105,24 @@ else
       --lr 1e-3
 fi
 
-# -------------------- Fine-tuning on Larry's games --------------------
-LARRY_PGN="$DATA_DIR/larry_games.pgn"
+# -------------------- 4) Fine-tuning on Larry's games --------------------
+LARRY_PGN="$LARRY_PGN_DEFAULT"
 LARRY_JSONL="$DATA_DIR/larry_games.jsonl"
 
-# Convert PGN → JSONL if needed
 if [ -f "$LARRY_PGN" ] && [ ! -f "$LARRY_JSONL" ]; then
   echo "⚡ Converting $LARRY_PGN → $LARRY_JSONL"
-  python "$PWD/scripts/pgn_to_training.py" --pgn "$LARRY_PGN" --out "$LARRY_JSONL"
+  python scripts/pgn_to_training.py \
+    --pgn "$LARRY_PGN" \
+    --out "$LARRY_JSONL"
 fi
 
 if [ -f "$LARRY_JSONL" ]; then
     if [ -f "$FINE_TUNE_MODEL" ]; then
-        echo "✅ Fine-tuned model already exists: $FINE_TUNE_MODEL, skipping fine-tuning"
+        echo "✅ Fine-tuned model exists: $FINE_TUNE_MODEL"
     else
-        echo "✅ Found Larry's dataset: $LARRY_JSONL"
-        echo "⚡ Fine-tuning Maia-Larry on Larry's games..."
-        PYTHONPATH=./scripts python "$PWD/scripts/fine_tune_larry.py" \
+        echo "⚡ Fine-tuning on Larry’s games..."
+        # <-- RUN IN VENV USING python directly
+        python scripts/fine_tune_larry.py \
           --base_model "$BASE_MODEL" \
           --larry_jsonl "$LARRY_JSONL" \
           --out_model "$FINE_TUNE_MODEL" \
@@ -90,19 +130,17 @@ if [ -f "$LARRY_JSONL" ]; then
           --batch_size 128 \
           --lr 5e-4 \
           --freeze_conv
-        echo "✅ Fine-tuned model saved to $FINE_TUNE_MODEL"
     fi
 else
-    echo "⚠️ Skipping fine-tuning: $LARRY_JSONL not found."
+    echo "⚠️ No Larry PGN found. Skipping fine-tune."
 fi
 
-# -------------------- Save move map for tests --------------------
+# -------------------- 5) Save move map --------------------
 if [ ! -f "$MOVE_MAP_JSON" ]; then
-    echo "⚡ Saving move map for tests → $MOVE_MAP_JSON"
+    echo "⚡ Saving move map → $MOVE_MAP_JSON"
     python - <<END
-import json, numpy as np
+import json
 from scripts.train_base_maia import load_dataset, build_move_map
-
 X, y_raw = load_dataset("$DOWNSAMPLED")
 move_map = build_move_map(y_raw)
 with open("$MOVE_MAP_JSON", "w") as f:
@@ -112,9 +150,7 @@ else
     echo "✅ Move map already exists: $MOVE_MAP_JSON"
 fi
 
-# -------------------- Done --------------------
 echo "🎯 Pipeline complete!"
-echo "✅ Models:"
-echo "   Base model: $BASE_MODEL"
-echo "   Fine-tuned model: $FINE_TUNE_MODEL (if available)"
-echo "✅ Move map: $MOVE_MAP_JSON"
+echo "   Base model:       $BASE_MODEL"
+echo "   Fine-tuned model: $FINE_TUNE_MODEL"
+echo "   Move map:         $MOVE_MAP_JSON"
