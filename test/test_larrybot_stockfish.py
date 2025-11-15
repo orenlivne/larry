@@ -8,7 +8,6 @@ import tensorflow as tf
 
 from run_larrybot import (
     predict_maia_move,
-    fen_to_planes
 )
 
 MODEL_PATH = "./models/maia_larry_finetuned.keras"
@@ -41,7 +40,7 @@ def test_larry_vs_stockfish(model, move_map):
             break
 
         if board.turn == chess.WHITE:
-            mv = predict_maia_move(model, board, inv_map)
+            mv = predict_maia_move(model, board, move_to_idx, inv_map)
             assert mv is not None, "LarryBot returned no legal move"
             assert mv in board.legal_moves, "LarryBot returned illegal move"
             board.push(mv)

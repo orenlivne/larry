@@ -9,8 +9,8 @@ DOWNSAMPLE_COUNT=5000   # Number of Lichess moves to use in training
 
 # -------------------- Environment --------------------
 if [ ! -d "$VENV_DIR" ]; then
-  echo "⚡ Creating virtual environment at $VENV_DIR"
-  python3 -m venv "$VENV_DIR"
+  echo "⚡ Creating virtual environment at $VENV_DIR with Python 3.10"
+  python3.10 -m venv "$VENV_DIR"
   NEW_VENV=1
 else
   echo "==== 0.5) Virtual environment already exists ===="
@@ -20,9 +20,10 @@ fi
 source "$VENV_DIR/bin/activate"
 
 if [ "$NEW_VENV" -eq 1 ]; then
-  echo "==== 0.75) Installing TensorFlow and dependencies ===="
+  echo "==== 0.75) Installing TensorFlow-Metal and dependencies ===="
   pip install --upgrade pip setuptools wheel
-  pip install tensorflow-macos==2.16.1 tensorflow-metal==1.1.0 "numpy<2" pandas python-chess tqdm requests zstandard scikit-learn matplotlib seaborn pytest
+  pip install tensorflow-macos==2.16.1 tensorflow-metal==1.1.0 "numpy<2"
+  pip install pandas python-chess tqdm requests zstandard scikit-learn matplotlib seaborn berserk pytest
 else
   echo "==== 0.75) Dependencies already installed ===="
 fi
@@ -60,7 +61,7 @@ else
     python "$PWD/scripts/train_base_maia.py" \
       --data "$DOWNSAMPLED" \
       --out_model "$BASE_MODEL" \
-      --epochs 3 \
+      --epochs 1 \
       --batch_size 256 \
       --lr 1e-3
 fi
@@ -81,12 +82,14 @@ if [ -f "$LARRY_JSONL" ]; then
     else
         echo "✅ Found Larry's dataset: $LARRY_JSONL"
         echo "⚡ Fine-tuning Maia-Larry on Larry's games..."
-        python "$PWD/scripts/train_base_maia.py" \
-          --data "$LARRY_JSONL" \
+        PYTHONPATH=./scripts python "$PWD/scripts/fine_tune_larry.py" \
+          --base_model "$BASE_MODEL" \
+          --larry_jsonl "$LARRY_JSONL" \
           --out_model "$FINE_TUNE_MODEL" \
-          --epochs 2 \
+          --epochs 1 \
           --batch_size 128 \
-          --lr 5e-4
+          --lr 5e-4 \
+          --freeze_conv
         echo "✅ Fine-tuned model saved to $FINE_TUNE_MODEL"
     fi
 else
