@@ -244,25 +244,43 @@ def run_local_test(model, move_to_idx, idx_to_move, stockfish_path):
 # -----------------------------
 def handle_lichess_game(client, model, move_to_idx, idx_to_move, game_id):
     board = chess.Board()
+    my_bot_username = client.account.get()["username"].lower()  # normalize
+    my_color = None
+
     for event in client.bots.stream_game_state(game_id):
-        if event["type"] not in ("gameFull", "gameState"):
+        if event["type"] == "gameFull":
+            # Determine bot color
+            white_player = event["white"]["id"].lower()
+            black_player = event["black"]["id"].lower()
+            if white_player == my_bot_username:
+                my_color = chess.WHITE
+            elif black_player == my_bot_username:
+                my_color = chess.BLACK
+            else:
+                print("⚠️ Bot not found in gameFull event, skipping...")
+                continue  # skip until we get correct event
+            moves = event.get("moves", "")
+        elif event["type"] == "gameState":
+            moves = event.get("moves", "")
+        else:
             continue
-        moves = event.get("moves", "")
-        if not moves:
-            continue
+
+        # Rebuild board from moves
         board = chess.Board()
         for mv in moves.split():
             board.push_uci(mv)
 
-        if board.turn == chess.WHITE:
+        if my_color is None:
+            continue  # wait until color is set
+
+        if board.turn == my_color:
             mv = predict_maia_move(model, board, move_to_idx, idx_to_move)
             if mv is None:
                 print("⚠️ LarryBot had no legal move.")
                 continue
             client.bots.make_move(game_id, mv.uci())
-            print(f"🤖 LarryBot played {mv.uci()}")
-
-
+            print(f"🤖 LarryBot ({'White' if my_color == chess.WHITE else 'Black'}) played {mv.uci()}")
+            
 def run_live(token_file, model, move_to_idx, idx_to_move):
     if berserk is None:
         raise RuntimeError("berserk not installed; cannot run in Lichess mode.")
