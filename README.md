@@ -1,167 +1,204 @@
-# Larry Christiansen Simul Prep
-- Fine-tune Maia to create a LarryBot.
-- Targetted opening study.
+# LarryBot
 
-Got it — I’ll provide the **full GitHub README in clean Markdown**, with proper fenced code blocks and no extra escaping. You can copy it directly into `README.md` and it will render perfectly on GitHub.
+Chess bot that models any player's style at any ELO level. Give it a PGN database of someone's games and a target ELO, and it plays like them.
 
----
+Built for the specific use case of simulating Larry Christiansen in a simul (classical ELO minus 200 points), but works for any player.
 
-# 🤖 LarryBot: Maia Fine-Tuned Chess Engine
+## How It Works
 
-**LarryBot** is a fine-tuned Maia neural chess engine trained on ~2,000 of Larry Christian’s games.
-It simulates Larry’s playing style and can play online through **Lichess Bot API**.
+- **Stockfish** with `UCI_LimitStrength` / `UCI_Elo` provides real, FIDE-calibrated playing strength (range 1320-3190)
+- **Opening book** built from the player's games gives them their real repertoire
+- **Style vector** (aggression, material preference, piece activity, centrality) biases move selection among close Stockfish candidates toward the player's tendencies
 
-Built for macOS M1/M2/M3 with full GPU acceleration using **TensorFlow Metal** and **uv**.
+No neural network training required. No GPU required.
 
----
+## Requirements
 
-## ⚙️ Requirements
+- Python 3.10+
+- [Stockfish](https://stockfishchess.org/) (`brew install stockfish` on macOS)
+- [uv](https://github.com/astral-sh/uv) (recommended) or pip
+- A PGN file of the player's games
 
-* macOS 13+ (M1/M2/M3 recommended)
-* [Homebrew](https://brew.sh/)
-* [uv](https://github.com/astral-sh/uv)
-* Lichess account with BOT token
-  (Create at: [lichess.org/account/oauth/token](https://lichess.org/account/oauth/token))
-
----
-
-## 🚀 Quick Start
-
-### 1. Clone this repo
+## Setup
 
 ```bash
 git clone https://github.com/orenlivne/larry.git
 cd larry
+uv sync
 ```
 
-### 2. Add Larry’s PGNs
-
-Put all Larry Christian PGNs in:
-
-```
-data/larry_games/
-```
-
-Each file must end with `.pgn`.
-
-### 3. Run the setup script
+Or with pip:
 
 ```bash
-./setup_larrybot.sh
+pip install -e .
 ```
 
-This will:
-
-* Install dependencies
-* Set up the `uv` Python environment
-* Download the base Maia model
-* Convert Larry’s PGNs into training data
-* Fine-tune the network
-* Blend a stronger variant (~2300 ELO)
-* Configure a ready-to-run Lichess bot
-
-> Note: If you run this inside your Git repo, the following directories will be created:
-> `maia-chess/`, `lichess-bot/`, `models/`, `data/`.
-> Make sure to add them to `.gitignore` to avoid committing large files.
-
----
-
-### 4. Add your Lichess API token
-
-Edit `lichess-bot/config.yml`:
-
-```yaml
-token: "YOUR_TOKEN_HERE"
-```
-
-Replace `"YOUR_TOKEN_HERE"` with your Lichess token (must have *Play games with the bot API* permission).
-
----
-
-### 5. Start the bot
+Verify Stockfish is installed:
 
 ```bash
-uv run python lichess-bot/lichess-bot.py
+which stockfish
+# Should print something like /opt/homebrew/bin/stockfish
 ```
 
-Your Lichess bot will appear online and can accept challenges.
+## Step 1: Get Game Data
 
----
+You need a PGN file containing the player's games. Sources:
 
-## 🧩 Directory Layout
+### From ChessBase
+1. Open ChessBase
+2. Search for the player (e.g., "Christiansen, Larry")
+3. Select the games you want (e.g., White games only for simul prep)
+4. File > Export > PGN
+5. Save as `data/larry_games.pgn`
 
-```
-larry/
- ├── setup_larrybot.sh
- ├── data/
- │   ├── larry_games.pgn
- │   └── larry_dataset.txt
- ├── models/
- │   ├── larry_maia/best.pb.gz
- │   └── larry_maia_2300.pb.gz
- ├── maia-chess/
- ├── lichess-bot/
- └── README.md
-```
-
----
-
-## 🎚️ Difficulty Levels
-
-| Model                   | Approx ELO                                   | Description                  |
-| ----------------------- | -------------------------------------------- | ---------------------------- |
-| `larry_maia/best.pb.gz` | ~2200                                        | Default trained Larry model  |
-| `larry_maia_2300.pb.gz` | ~2300                                        | Sharper variant, harder play |
-| Lower levels            | Adjust move time in `lichess-bot/config.yml` |                              |
-
-Example:
-
-```yaml
-uci_options:
-  MoveTime: 0.5
+### From Chess.com
+```bash
+# Download all games for a user (replace USERNAME and date range)
+curl "https://api.chess.com/pub/player/USERNAME/games/2024/01/pgn" -o data/player_games.pgn
+curl "https://api.chess.com/pub/player/USERNAME/games/2024/02/pgn" >> data/player_games.pgn
+# Repeat for each month, or use a tool like https://www.chess.com/games/archive
 ```
 
----
+### From Lichess
+```bash
+# Download all games for a user
+curl "https://lichess.org/api/games/user/USERNAME?pgnInJson=false" -o data/player_games.pgn
+```
 
-## 🔄 Updating / Retraining
+Put the PGN file anywhere accessible; you'll pass the path to the build script.
 
-If you add more PGNs later, you can retrain:
+## Step 2: Build the Player Model
 
 ```bash
-uv run python maia-chess/train.py \
-  --train-data data/larry_dataset.txt \
-  --val-data data/larry_dataset.txt \
-  --init-from models/larry_maia/best.pb.gz \
-  --save-dir models/larry_maia \
-  --epochs 2 \
-  --batch-size 32 \
-  --lr 1e-4 \
-  --use-gpu
+python scripts/build_player.py \
+    --pgn data/larry_games.pgn \
+    --player "Christiansen" \
+    --classical-elo 2620 \
+    --elo-offset -200 \
+    --output players/larry_christiansen/
 ```
 
-Then rebuild higher-strength variants using:
+| Flag | Description |
+|---|---|
+| `--pgn` | Path to the PGN file |
+| `--player` | Player name (case-insensitive substring match against PGN headers) |
+| `--classical-elo` | The player's known classical/standard ELO rating |
+| `--elo-offset` | ELO adjustment (e.g., `-200` for simul, `0` for full strength) |
+| `--stockfish` | Path to Stockfish binary (default: `/opt/homebrew/bin/stockfish`) |
+| `--book-depth` | How many half-moves deep to build the opening book (default: 20) |
+| `--output` | Directory to save the player model |
+
+This produces:
+```
+players/larry_christiansen/
+  config.json        # Player config (ELO, style vector, paths)
+  opening_book.json  # Opening repertoire from games
+```
+
+### More Examples
+
+Model a chess.com friend at their actual rating:
+```bash
+python scripts/build_player.py \
+    --pgn data/friend_games.pgn \
+    --player "friend_username" \
+    --classical-elo 1800 \
+    --output players/my_friend/
+```
+
+Model a GM at rapid strength (-100 ELO):
+```bash
+python scripts/build_player.py \
+    --pgn data/nakamura_games.pgn \
+    --player "Nakamura" \
+    --classical-elo 2785 \
+    --elo-offset -100 \
+    --output players/nakamura_rapid/
+```
+
+## Step 3: Play Locally
+
+Test the bot against Stockfish:
 
 ```bash
-uv run python maia-chess/scripts/blend_models.py \
-  --a models/larry_maia/best.pb.gz \
-  --b maia-chess/data/maia-1900.pb.gz \
-  --alpha 0.8 \
-  --out models/larry_maia_2300.pb.gz
+python scripts/play_local.py \
+    --player-dir players/larry_christiansen/ \
+    --opponent-elo 2000 \
+    --num-games 3
 ```
 
----
+| Flag | Description |
+|---|---|
+| `--player-dir` | Player model directory (from step 2) |
+| `--opponent-elo` | Stockfish opponent ELO (1320-3190) |
+| `--num-games` | Number of games to play (alternates White/Black) |
+| `--stockfish` | Override Stockfish path |
 
-## ⚡ Optional: Human-Like Move Delays
+The bot alternates colors each game and prints full move lists with results.
 
-To simulate a real opponent, add a random delay in `lichess-bot.py` before making a move:
+## Step 4: Deploy to Lichess
 
-```python
-import random, time
-time.sleep(random.uniform(0.4, 2.5))
+### Get a Lichess BOT token
+1. Create or use a Lichess account dedicated to the bot
+2. Upgrade the account to BOT: `https://lichess.org/api/bot/account/upgrade` (irreversible)
+3. Generate an API token at `https://lichess.org/account/oauth/token` with the **Play games with the bot API** scope
+4. Save the token to a file:
+   ```bash
+   echo "lip_your_token_here" > data/larrybot/token.txt
+   ```
+
+### Run the bot
+```bash
+python scripts/run_lichess.py \
+    --player-dir players/larry_christiansen/ \
+    --token-file data/larrybot/token.txt
 ```
 
-This makes LarryBot’s tempo feel natural during practice games.
+The bot will:
+- Connect to Lichess and print the account name
+- Accept all incoming challenges
+- Play each game using the player model at the configured ELO
+- Print moves as they're played
 
----
+Stop with `Ctrl+C`.
 
-Do you want me to also write a **`.gitignore` section** you can include in this repo so it ignores all the large directories automatically?
+## ELO Calibration
+
+Playing strength comes directly from Stockfish's `UCI_Elo` parameter, which is calibrated against CCRL/FIDE ratings:
+
+| Target | `classical_elo` | `elo_offset` | Effective |
+|---|---|---|---|
+| Larry in simul | 2620 | -200 | 2420 |
+| Larry full strength | 2620 | 0 | 2620 |
+| Club player | 1600 | 0 | 1600 |
+| Beginner | 1320 | 0 | 1320 |
+
+The valid range is 1320-3190. Values outside this range are clamped automatically.
+
+## Running Tests
+
+```bash
+pytest tests/ -v
+```
+
+Tests require Stockfish to be installed. If Stockfish is not found, engine-dependent tests are skipped automatically.
+
+## Project Structure
+
+```
+src/larrybot/
+  config.py           # PlayerConfig + StyleVector dataclasses
+  pgn_utils.py        # PGN parsing (ChessBase, chess.com, Lichess formats)
+  engine.py           # Stockfish wrapper with UCI_Elo control
+  opening_book.py     # Personal opening book from PGN games
+  style.py            # Style extraction + move scoring
+  bot.py              # Main bot: engine + book + style
+  lichess_client.py   # Lichess BOT API integration
+
+scripts/
+  build_player.py     # Build player model from PGN
+  play_local.py       # Play locally vs Stockfish
+  run_lichess.py      # Run on Lichess
+
+tests/                # 54 tests covering all components
+```
