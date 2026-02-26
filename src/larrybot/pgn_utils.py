@@ -66,6 +66,47 @@ class IllegalMoveError(Exception):
     pass
 
 
+def extract_player_elo(
+    pgn_source: str | io.TextIOBase,
+    player_name: str,
+) -> int | None:
+    """Compute the average ELO of a player from PGN header fields.
+
+    Looks at WhiteElo/BlackElo headers for games where the player appears.
+    Returns the rounded mean, or ``None`` if no ratings are found.
+    """
+    if isinstance(pgn_source, str):
+        handle = open(pgn_source, errors="replace")
+        should_close = True
+    else:
+        handle = pgn_source
+        should_close = False
+
+    elos: list[int] = []
+    try:
+        while True:
+            game = chess.pgn.read_game(handle)
+            if game is None:
+                break
+            white = game.headers.get("White", "")
+            black = game.headers.get("Black", "")
+            if _player_matches(white, player_name):
+                raw = game.headers.get("WhiteElo", "")
+                if raw.isdigit():
+                    elos.append(int(raw))
+            if _player_matches(black, player_name):
+                raw = game.headers.get("BlackElo", "")
+                if raw.isdigit():
+                    elos.append(int(raw))
+    finally:
+        if should_close:
+            handle.close()
+
+    if not elos:
+        return None
+    return round(sum(elos) / len(elos))
+
+
 def count_games(pgn_source: str | io.TextIOBase) -> int:
     """Count the number of games in a PGN source."""
     if isinstance(pgn_source, str):

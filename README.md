@@ -52,17 +52,33 @@ You need a PGN file containing the player's games. Sources:
 5. Save as `data/larry_games.pgn`
 
 ### From Chess.com
+
+Download the last 12 months of a player's games:
+
 ```bash
-# Download all games for a user (replace USERNAME and date range)
-curl "https://api.chess.com/pub/player/USERNAME/games/2024/01/pgn" -o data/player_games.pgn
-curl "https://api.chess.com/pub/player/USERNAME/games/2024/02/pgn" >> data/player_games.pgn
-# Repeat for each month, or use a tool like https://www.chess.com/games/archive
+# Download all games from the last year (replace USERNAME)
+for month in $(seq -f "%02g" 1 12); do
+  curl -s "https://api.chess.com/pub/player/USERNAME/games/2025/${month}/pgn" >> data/player_games.pgn
+done
+```
+
+Or a single month:
+```bash
+curl "https://api.chess.com/pub/player/USERNAME/games/2025/01/pgn" -o data/player_games.pgn
 ```
 
 ### From Lichess
+
+Download the last year of a player's games:
+
 ```bash
-# Download all games for a user
-curl "https://lichess.org/api/games/user/USERNAME?pgnInJson=false" -o data/player_games.pgn
+# All games from the last 365 days
+curl "https://lichess.org/api/games/user/USERNAME?since=$(date -v-1y +%s000)&pgnInJson=false" \
+  -o data/player_games.pgn
+
+# Or with a specific date range (millisecond timestamps)
+curl "https://lichess.org/api/games/user/USERNAME?since=1704067200000&until=1735689600000&pgnInJson=false" \
+  -o data/player_games.pgn
 ```
 
 Put the PGN file anywhere accessible; you'll pass the path to the build script.
@@ -82,7 +98,7 @@ python scripts/build_player.py \
 |---|---|
 | `--pgn` | Path to the PGN file |
 | `--player` | Player name (case-insensitive substring match against PGN headers) |
-| `--classical-elo` | The player's known classical/standard ELO rating |
+| `--classical-elo` | The player's ELO rating, or `auto` to extract from PGN headers |
 | `--elo-offset` | ELO adjustment (e.g., `-200` for simul, `0` for full strength) |
 | `--stockfish` | Path to Stockfish binary (default: `/opt/homebrew/bin/stockfish`) |
 | `--book-depth` | How many half-moves deep to build the opening book (default: 20) |
@@ -97,7 +113,16 @@ players/larry_christiansen/
 
 ### More Examples
 
-Model a chess.com friend at their actual rating:
+Auto-detect ELO from PGN headers (chess.com and Lichess exports include ratings):
+```bash
+python scripts/build_player.py \
+    --pgn data/friend_games.pgn \
+    --player "friend_username" \
+    --classical-elo auto \
+    --output players/my_friend/
+```
+
+Model a chess.com friend at a specific rating:
 ```bash
 python scripts/build_player.py \
     --pgn data/friend_games.pgn \

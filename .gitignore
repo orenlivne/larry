@@ -1,7 +1,7 @@
 maia-chess/
 lichess-bot/
 models/
-data/
+/data/
 players/
 .python-version
 **/__pycache__

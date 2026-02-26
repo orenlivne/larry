@@ -5,7 +5,7 @@ import io
 import chess
 import pytest
 
-from larrybot.pgn_utils import count_games, iter_player_positions
+from larrybot.pgn_utils import count_games, extract_player_elo, iter_player_positions
 from conftest import SAMPLE_PGN
 
 
@@ -75,3 +75,37 @@ def test_malformed_pgn():
     # Should get at least the valid moves from the first game + second game
     positions = list(iter_player_positions(io.StringIO(pgn_text), "Player"))
     assert len(positions) >= 1  # at least e4 and d4
+
+
+def test_extract_player_elo_from_sample():
+    """Average ELO should match the headers in sample.pgn."""
+    elo = extract_player_elo(SAMPLE_PGN, "Christiansen")
+    # All 5 games have WhiteElo=2620 or BlackElo=2620 for Christiansen
+    assert elo == 2620
+
+
+def test_extract_player_elo_from_stream():
+    pgn_text = (
+        '[White "Player"]\n[Black "Opp"]\n[WhiteElo "2400"]\n[BlackElo "2000"]\n[Result "1-0"]\n\n'
+        "1. e4 e5 1-0\n\n"
+        '[White "Opp2"]\n[Black "Player"]\n[WhiteElo "2100"]\n[BlackElo "2500"]\n[Result "0-1"]\n\n'
+        "1. d4 d5 0-1\n"
+    )
+    elo = extract_player_elo(io.StringIO(pgn_text), "Player")
+    # Average of 2400 (as White) and 2500 (as Black) = 2450
+    assert elo == 2450
+
+
+def test_extract_player_elo_no_match():
+    elo = extract_player_elo(SAMPLE_PGN, "Kasparov")
+    assert elo is None
+
+
+def test_extract_player_elo_no_headers():
+    """PGN without ELO headers returns None."""
+    pgn_text = (
+        '[White "Player"]\n[Black "Opp"]\n[Result "1-0"]\n\n'
+        "1. e4 e5 1-0\n"
+    )
+    elo = extract_player_elo(io.StringIO(pgn_text), "Player")
+    assert elo is None

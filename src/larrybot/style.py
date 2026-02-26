@@ -65,11 +65,20 @@ def _aggression_score(board: chess.Board, move: chess.Move, color: chess.Color) 
         score += 0.4
     board.pop()
 
-    # Attacking opponent's king zone
+    # Attacking opponent's king zone: landing in it OR the moved piece
+    # attacks king-zone squares from its new position
     opp_king_zone = _king_zone(board, opp_color)
     to_sq = move.to_square
     if to_sq in opp_king_zone:
         score += 0.3
+    else:
+        board.push(move)
+        piece = board.piece_at(to_sq)
+        if piece is not None:
+            piece_attacks = board.attacks(to_sq)
+            if piece_attacks & chess.SquareSet(opp_king_zone):
+                score += 0.2
+        board.pop()
 
     # Piece sacrifices (moving to a square attacked by opponent)
     if board.is_attacked_by(opp_color, to_sq):
@@ -82,16 +91,21 @@ def _aggression_score(board: chess.Board, move: chess.Move, color: chess.Color) 
     return min(1.0, score)
 
 
+_PIECE_VALUES = {
+    chess.PAWN: 0.2, chess.KNIGHT: 0.5, chess.BISHOP: 0.5,
+    chess.ROOK: 0.7, chess.QUEEN: 1.0, chess.KING: 0.0,
+}
+
+
 def _material_score(board: chess.Board, move: chess.Move) -> float:
     """Score material gain of a move (0-1)."""
     if board.is_capture(move):
+        # En passant: captured pawn is not on to_square
+        if board.is_en_passant(move):
+            return _PIECE_VALUES[chess.PAWN]
         captured = board.piece_at(move.to_square)
         if captured:
-            values = {
-                chess.PAWN: 0.2, chess.KNIGHT: 0.5, chess.BISHOP: 0.5,
-                chess.ROOK: 0.7, chess.QUEEN: 1.0, chess.KING: 0.0,
-            }
-            return values.get(captured.piece_type, 0.0)
+            return _PIECE_VALUES.get(captured.piece_type, 0.0)
     return 0.0
 
 
