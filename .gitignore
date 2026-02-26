@@ -2,12 +2,9 @@ maia-chess/
 lichess-bot/
 models/
 data/
-# LarryBot
-maia-chess/
-lichess-bot/
-models/
-data/
+players/
 .python-version
 **/__pycache__
 .venv/
 .vscode/
+uv.lock

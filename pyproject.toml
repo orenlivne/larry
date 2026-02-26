@@ -1,15 +1,17 @@
 [project]
 name = "larrybot"
-version = "0.1.0"
-description = "Larry Maia fine-tuning project"
+version = "2.0.0"
+description = "Chess bot that models any player's style at any ELO level"
 authors = ["Oren Livne <you@example.com>"]
 dependencies = [
-    "berserk>=0.14.0",
-    "ipython>=9.6.0",
-    "pip>=25.3",
-    "pytest>=9.0.1",
     "python-chess>=1.999",
-    "tensorflow>=2.20.0",
+    "berserk>=0.14.0",
     "tqdm>=4.67.1",
-    "zstandard>=0.25.0",
 ]
+
+[project.optional-dependencies]
+dev = ["pytest>=9.0.1"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

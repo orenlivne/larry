@@ -9,10 +9,10 @@
 │ Early simplification in the center. When he takes on c5, play ...Nbd7 and take back with the N  
 │ to prevent a3–b4 tempi. Clarifies the center and leads to simplified tension and piece play.  
 │  
-├── 3. Nc3 (Black: 3... cxd4) — Tarrasch Hopeful  
+├── 3. Nc3 (Black: 3... cxd4) — Tarrasch Hopeful / Scharra Gambit
 │ Tries to transpose to the main Tarrasch with 3...e6, but we surprise with a pawn sac on d5  
-│ for initiative (like Dubov–Tarrasch). Play 7...Qc7 to avoid a Q-trade.  
-│ On 9. Qd3 play 9...Bc5! Be3 Bb4! — provoking White to block his e-pawn & development.  
+│ for initiative. Play 7...Qc7 to avoid a Q-trade.  
+│ On 9. Qd3 play 9...Bc5! Be3 Bb4! — provoking White to block his e-pawn & development. ...Qb6 against Bg5 = double attack.
 │  
 ├── 3. e3 (Black: 3... Nf6) — Solid / Colle  
 │ Reverse Catalan structure; Black develops flexibly and can mirror Qb3 → ...Qb6.  
@@ -20,9 +20,9 @@
 └── 3. Nf3 (Black: 3... cxd4) — Main Line (Development)  
   4. cxd5 Qd5  
 
-  ├── 5. Qxd4 (Black: 5... Nf6) — Symmetrical Nakamura  
-  │ Basic plan: trade queens early, then develop with ...a6, ...e5, ...Nc6.  
-  │ Nakamura’s dynamic idea: expand with ...a5 and ...Ra8–a5 for activity.  
+  ├── 5. Qxd4 (Black: 5... Qxd4) — Symmetrical
+  │ Prevent Nb5 with ...Bd7. Trade on d4, play ...e6, ...a6.
+  │ Alternative: 5...Nf6 with Nakamura’s dynamic idea: expand with ...a5 and ...Ra8–a5 for activity.  
   │  
   └── 5. Nc3 Qa5  
     6. Nd4 Nf6  
@@ -33,7 +33,7 @@
     │  
     │ ├── 8. Nb5 (Black: 8... Qe5) - Counterattack line
     │ │ A sharp line of counterattacks; Black often reroutes the Q back to c7 later.  
-    │ │ White may even sacrifice a pawn with e6!? for dynamic play.  
+    │ │ White may sacrifice a pawn with e6!? for dynamic play.  
     │ │  
     │ └── 8. e4 Nc6  
     │   Continuing central expansion. Typical follow-ups: 9. Bb5, Bg5, Be3, or Be2.  
@@ -58,7 +58,7 @@
     │ queenside activity or central breaks.  
     │  
     ├── 7. a3 — "Prophylaxis"  
-    │ (Black: flexible — often ...a4 or ...Be6)  
+    │ (Black: 7...e5, flexible — often ...a4 or ...Be6)  
     │ Prevents ...Bb4 / ...Na4 and prepares b4; Black answers with  
     │ fast queenside expansion.  
     │  
