@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit:*)",
+      "Bash(git add README.md)",
+      "Bash(python -m pytest tests/test_style.py -v)",
+      "Bash(python scripts/build_player.py --pgn tests/data/sample.pgn --player \"Christiansen\" --classical-elo auto --elo-offset -200 --output /tmp/test_auto_elo/)",
+      "Bash(git add README.md scripts/build_player.py src/larrybot/pgn_utils.py src/larrybot/style.py tests/test_pgn_utils.py tests/test_style.py tests/data/sample.pgn)",
+      "Bash(git add .gitignore README.md scripts/build_player.py src/larrybot/pgn_utils.py src/larrybot/style.py tests/test_pgn_utils.py tests/test_style.py tests/data/sample.pgn)",
+      "Bash(python -m pytest tests/test_config.py -v)",
+      "Bash(python -m pytest tests/test_bot.py -v)",
+      "Bash(python -m pytest -v)",
+      "Bash(pytest tests/ --co -q)",
+      "Bash(python -m pytest tests/ --co -q)"
+    ]
+  }
+}
