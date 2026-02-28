@@ -15,7 +15,7 @@ No neural network training required. No GPU required.
 ## Requirements
 
 - Python 3.10+
-- [Stockfish](https://stockfishchess.org/) (`brew install stockfish` on macOS)
+- [Stockfish](https://stockfishchess.org/) (`brew install stockfish` on macOS, `sudo apt install stockfish` on Ubuntu/Debian)
 - [uv](https://github.com/astral-sh/uv) (recommended) or pip
 - A PGN file of the player's games
 
@@ -165,11 +165,15 @@ The bot alternates colors each game and prints full move lists with results.
 
 ### Get a Lichess BOT token
 1. Create or use a Lichess account dedicated to the bot
-2. Upgrade the account to BOT: `https://lichess.org/api/bot/account/upgrade` (irreversible)
-3. Generate an API token at `https://lichess.org/account/oauth/token` with the **Play games with the bot API** scope
-4. Save the token to a file:
+2. Generate an API token at `https://lichess.org/account/oauth/token` with the **Play games with the bot API** scope
+3. Save the token to a file:
    ```bash
    echo "lip_your_token_here" > data/larrybot/token.txt
+   ```
+4. Upgrade the account to BOT (irreversible — do this on a dedicated account, not your main one):
+   ```bash
+   curl -X POST https://lichess.org/api/bot/account/upgrade \
+     -H "Authorization: Bearer $(cat data/larrybot/token.txt)"
    ```
 
 ### Run the bot
@@ -225,5 +229,5 @@ scripts/
   play_local.py       # Play locally vs Stockfish
   run_lichess.py      # Run on Lichess
 
-tests/                # 54 tests covering all components
+tests/                # 92 tests covering all components
 ```
