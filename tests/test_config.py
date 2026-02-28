@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from larrybot.config import MAX_UCI_ELO, MIN_UCI_ELO, PlayerConfig, StyleVector
+from larrybot.config import MAX_UCI_ELO, MIN_UCI_ELO, PlayerConfig, StyleVector, elo_to_temperature
 
 
 class TestStyleVector:
@@ -85,3 +85,30 @@ class TestPlayerConfig:
             assert loaded.style is None
         finally:
             Path(path).unlink(missing_ok=True)
+
+
+class TestEloToTemperature:
+
+    def test_low_elo_high_temperature(self):
+        temp = elo_to_temperature(1320)
+        assert temp > 0.8
+
+    def test_high_elo_low_temperature(self):
+        temp = elo_to_temperature(3190)
+        assert temp < 0.1
+
+    def test_monotonically_decreasing(self):
+        """Higher ELO should always produce lower temperature."""
+        elos = [1320, 1500, 1800, 2000, 2200, 2500, 2800, 3190]
+        temps = [elo_to_temperature(e) for e in elos]
+        for i in range(len(temps) - 1):
+            assert temps[i] > temps[i + 1], f"temp({elos[i]}) should be > temp({elos[i+1]})"
+
+    def test_never_negative(self):
+        for elo in range(MIN_UCI_ELO, MAX_UCI_ELO + 1, 100):
+            assert elo_to_temperature(elo) > 0
+
+    def test_mid_range_reasonable(self):
+        """2000 ELO should have moderate temperature (not too low, not too high)."""
+        temp = elo_to_temperature(2000)
+        assert 0.3 < temp < 0.8

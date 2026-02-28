@@ -12,6 +12,21 @@ MIN_UCI_ELO = 1320
 MAX_UCI_ELO = 3190
 
 
+def elo_to_temperature(elo: int) -> float:
+    """Map ELO to a softmax temperature for human-like move sampling.
+
+    Lower ELO → higher temperature → more "blunders" (picks non-best moves).
+    Higher ELO → lower temperature → near-deterministic (picks the best).
+
+    Calibrated so that:
+      - 1320 ELO ≈ 0.90 (often picks 2nd/3rd best, ~15-20% blunder-like)
+      - 2000 ELO ≈ 0.55 (occasionally picks non-best, ~8-10%)
+      - 2500 ELO ≈ 0.30 (rarely deviates, ~3-5%)
+      - 3190 ELO ≈ 0.05 (near-deterministic)
+    """
+    return max(0.05, (3200 - elo) / 2200)
+
+
 @dataclass
 class StyleVector:
     """Captures a player's stylistic tendencies (each value 0-1)."""
