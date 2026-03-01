@@ -11,6 +11,31 @@ from typing import Optional
 MIN_UCI_ELO = 1320
 MAX_UCI_ELO = 3190
 
+RATING_SYSTEMS = ["fide", "lichess", "chesscom", "uscf"]
+
+
+def convert_to_fide(rating: int, system: str) -> int:
+    """Convert a rating from *system* to FIDE-equivalent.
+
+    Stockfish's UCI_Elo is calibrated against FIDE/CCRL. Ratings from other
+    systems must be converted so the bot plays at the correct strength.
+
+    Approximate linear fits derived from cross-rating statistical analysis
+    (ChessGoals.com, 2025).  Use ``--elo-offset`` for further fine-tuning.
+    """
+    if system == "fide":
+        return rating
+    if system == "lichess":
+        return round(0.84 * rating + 65)
+    if system == "chesscom":
+        return round(0.93 * rating + 65)
+    if system == "uscf":
+        return round(0.94 * rating + 70)
+    raise ValueError(
+        f"Unknown rating system {system!r}. "
+        f"Valid systems: {', '.join(RATING_SYSTEMS)}"
+    )
+
 
 def elo_to_temperature(elo: int) -> float:
     """Map ELO to a softmax temperature for human-like move sampling.

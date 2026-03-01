@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from larrybot.config import MAX_UCI_ELO, MIN_UCI_ELO, PlayerConfig, StyleVector, elo_to_temperature
+from larrybot.config import MAX_UCI_ELO, MIN_UCI_ELO, PlayerConfig, StyleVector, convert_to_fide, elo_to_temperature
 
 
 class TestStyleVector:
@@ -112,3 +112,43 @@ class TestEloToTemperature:
         """2000 ELO should have moderate temperature (not too low, not too high)."""
         temp = elo_to_temperature(2000)
         assert 0.3 < temp < 0.8
+
+
+class TestConvertToFide:
+
+    def test_fide_is_identity(self):
+        assert convert_to_fide(2000, "fide") == 2000
+        assert convert_to_fide(1500, "fide") == 1500
+
+    def test_lichess_lower_than_input(self):
+        """Lichess ratings are inflated vs FIDE."""
+        for rating in [1500, 1800, 2000, 2200]:
+            assert convert_to_fide(rating, "lichess") < rating
+
+    def test_chesscom_lower_than_input(self):
+        for rating in [1500, 1800, 2000, 2200]:
+            assert convert_to_fide(rating, "chesscom") < rating
+
+    def test_uscf_lower_than_input(self):
+        for rating in [1500, 1800, 2000, 2200]:
+            assert convert_to_fide(rating, "uscf") < rating
+
+    def test_unknown_system_raises(self):
+        with pytest.raises(ValueError, match="Unknown rating system"):
+            convert_to_fide(2000, "icc")
+
+    def test_lichess_known_values(self):
+        """Spot-check against ChessGoals cross-rating data."""
+        # Lichess rapid 2085 ≈ FIDE 1816
+        assert abs(convert_to_fide(2085, "lichess") - 1816) <= 5
+        # Lichess rapid 1990 ≈ FIDE 1737
+        assert abs(convert_to_fide(1990, "lichess") - 1737) <= 5
+
+    def test_deflation_ordering(self):
+        """Lichess inflates the most, then chess.com/USCF, then FIDE (no change)."""
+        rating = 2000
+        fide = convert_to_fide(rating, "fide")
+        uscf = convert_to_fide(rating, "uscf")
+        chesscom = convert_to_fide(rating, "chesscom")
+        lichess = convert_to_fide(rating, "lichess")
+        assert lichess < chesscom <= uscf < fide

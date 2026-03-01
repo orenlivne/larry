@@ -99,6 +99,7 @@ python scripts/build_player.py \
 | `--pgn` | Path to the PGN file |
 | `--player` | Player name (case-insensitive substring match against PGN headers) |
 | `--classical-elo` | The player's ELO rating, or `auto` to extract from PGN headers |
+| `--rating-system` | Rating system: `fide` (default), `lichess`, `chesscom`, or `uscf`. Non-FIDE ratings are converted to FIDE-equivalent for Stockfish |
 | `--elo-offset` | ELO adjustment (e.g., `-200` for simul, `0` for full strength) |
 | `--stockfish` | Path to Stockfish binary (default: `/opt/homebrew/bin/stockfish`) |
 | `--book-depth` | How many half-moves deep to build the opening book (default: 20) |
@@ -113,12 +114,13 @@ players/larry_christiansen/
 
 ### More Examples
 
-Auto-detect ELO from PGN headers (chess.com and Lichess exports include ratings):
+Auto-detect ELO from Lichess PGN headers (converted to FIDE-equivalent automatically):
 ```bash
 python scripts/build_player.py \
     --pgn data/friend_games.pgn \
     --player "friend_username" \
     --classical-elo auto \
+    --rating-system lichess \
     --output players/my_friend/
 ```
 
@@ -128,6 +130,7 @@ python scripts/build_player.py \
     --pgn data/friend_games.pgn \
     --player "friend_username" \
     --classical-elo 1800 \
+    --rating-system chesscom \
     --output players/my_friend/
 ```
 

@@ -23,7 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from larrybot.config import PlayerConfig
+from larrybot.config import RATING_SYSTEMS, PlayerConfig, convert_to_fide
 from larrybot.opening_book import OpeningBook
 from larrybot.pgn_utils import count_games, extract_player_elo
 from larrybot.style import StyleAnalyzer
@@ -37,6 +37,13 @@ def main() -> None:
         "--classical-elo",
         required=True,
         help="Player's classical ELO, or 'auto' to extract from PGN headers",
+    )
+    ap.add_argument(
+        "--rating-system",
+        choices=RATING_SYSTEMS,
+        default="fide",
+        help="Rating system of --classical-elo value (default: fide). "
+             "Non-FIDE ratings are converted to FIDE-equivalent for Stockfish.",
     )
     ap.add_argument("--elo-offset", type=int, default=0, help="ELO offset (e.g. -200 for simul)")
     ap.add_argument("--stockfish", default="/opt/homebrew/bin/stockfish", help="Stockfish path")
@@ -62,10 +69,15 @@ def main() -> None:
             print("Error: no ELO ratings found in PGN headers. "
                   "Specify --classical-elo manually.", file=sys.stderr)
             sys.exit(1)
-        classical_elo = detected
-        print(f"Auto-detected ELO from PGN headers: {classical_elo}")
+        raw_elo = detected
+        print(f"Auto-detected ELO from PGN headers: {raw_elo}")
     else:
-        classical_elo = int(args.classical_elo)
+        raw_elo = int(args.classical_elo)
+
+    # Convert to FIDE-equivalent if needed
+    classical_elo = convert_to_fide(raw_elo, args.rating_system)
+    if args.rating_system != "fide":
+        print(f"Converted {args.rating_system} {raw_elo} → FIDE-equivalent {classical_elo}")
 
     # Build opening book
     print(f"Building opening book for '{args.player}' (depth={args.book_depth})...")
